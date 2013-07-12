@@ -35,7 +35,11 @@ public class IniParser extends AbstractParser
 
     public IniParser()
     {
-        super(OPERATORS, COMMENTS);
+        this(OPERATORS, COMMENTS);
+    }
+
+    protected IniParser(String operators, String comments) {
+        super(operators, comments);
     }
 
     public static IniParser newInstance()
