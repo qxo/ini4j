@@ -32,10 +32,23 @@ import java.io.Reader;
 import java.io.Writer;
 
 import java.net.URL;
+import java.nio.charset.Charset;
 
 public class Ini extends BasicProfile implements Persistable, Configurable
 {
+    // Byte-order mark for UTF8 and UTF16 files
+    private static final int FIRST_UTF8_BYTE = 0xEF;
+    private static final int SECOND_UTF8_BYTE = 0xBB;
+    private static final int THIRD_UTF8_BYTE = 0xBF;
+    
+    private static final int FIRST_UTF16_BIGENDIAN = 0xFE;
+    private static final int SECOND_UTF16_BIGENDIAN = 0xFF;
+
+    private static final int FIRST_UTF16_LITTLEENDIAN = 0xFF;
+    private static final int SECOND_UTF16_LITTLEENDIAN = 0xFE;
+
     private static final long serialVersionUID = -6029486578113700585L;
+    
     private Config _config;
     private File _file;
 
@@ -53,7 +66,75 @@ public class Ini extends BasicProfile implements Persistable, Configurable
     public Ini(InputStream input) throws IOException, InvalidFileFormatException
     {
         this();
-        load(input);
+        
+        boolean resetMustBeDone = false;
+        final boolean resetIsSupported = input.markSupported();
+        final Reader originalInputStream = new InputStreamReader( input );
+        
+        if (resetIsSupported)
+        {
+            input.mark( 1024 );
+        }
+        final int firstReadByte = input.read();
+        if (   (firstReadByte == FIRST_UTF16_BIGENDIAN)
+            || (firstReadByte == FIRST_UTF16_LITTLEENDIAN)
+            || (firstReadByte == FIRST_UTF8_BYTE) )
+        {
+            final int secondReadByte = input.read();
+            if (   (firstReadByte == FIRST_UTF16_BIGENDIAN)
+                && (secondReadByte == SECOND_UTF16_BIGENDIAN) )
+            {
+                //we have detected UTF16 BE
+                _config.setFileEncoding( Charset.forName( "UTF-16BE" ) );
+            }
+            else if (  (firstReadByte == FIRST_UTF16_LITTLEENDIAN)
+                     && (secondReadByte == SECOND_UTF16_LITTLEENDIAN) )
+            {
+                //we have detected UTF16 LE
+                _config.setFileEncoding( Charset.forName( "UTF-16LE" ) );
+            }
+            else if (   (firstReadByte == FIRST_UTF8_BYTE)
+                     && (secondReadByte == SECOND_UTF8_BYTE) )
+            {
+                final int thirdReadByte = input.read();
+                if (   (firstReadByte == FIRST_UTF8_BYTE)
+                    && (secondReadByte == SECOND_UTF8_BYTE)
+                    && (thirdReadByte == THIRD_UTF8_BYTE) )
+                {
+                    //we have detected UTF8
+                    _config.setFileEncoding( Charset.forName( "UTF-8" ) );
+                }
+                else
+                {
+                    resetMustBeDone = true;
+                }   
+            }
+            else
+            {
+                resetMustBeDone = true;    
+            }
+        }
+        else
+        {
+            resetMustBeDone = true;
+        }
+        
+        if (resetMustBeDone)
+        {
+            if (resetIsSupported)
+            {
+                input.reset();
+                load(input);
+            }
+            else
+            {
+                load(originalInputStream);
+            }   
+        }
+        else
+        {
+            load(input);
+        }
     }
 
     public Ini(URL input) throws IOException, InvalidFileFormatException
